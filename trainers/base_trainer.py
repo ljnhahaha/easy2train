@@ -44,8 +44,9 @@ class dotdict(dict):
     __delattr__ = dict.__delitem__
 
 
-class TrainerBase(nn.Module):
+class TrainerBase(object):
     def __init__(self,
+                 model,
                  epochs: int,
                  data_loader,
                  optimizer,
@@ -55,12 +56,16 @@ class TrainerBase(nn.Module):
                  **kwargs):
         super(TrainerBase, self).__init__()
 
+        self.model = model
+        if self.model is None:
+            raise ValueError("Please input the model you want to train")
+
         self.epochs = epochs
         if self.epochs is None:
             raise ValueError("Please input number of epochs")
 
         self.data_loader = data_loader
-        if self.train_loader is None:
+        if self.data_loader is None:
             raise ValueError("Please input data loader")
 
         self.optimizer = optimizer
@@ -88,25 +93,6 @@ class TrainerBase(nn.Module):
         self.adjust_learning_rate = adjust_learning_rate if adjust_learning_rate is not None else False
 
     def updating_learning_rate(self, epoch, learning_rate):
-        # # lr = args.learning_rate * (0.2 ** (epoch // 2))
-        # if self.types == 'type1':
-        #     lr_adjust = {epoch: learning_rate * (0.1 ** ((epoch - 1) // 10))}  # 每10个epoch,学习率缩小10倍
-        # elif self.types == 'type2':
-        #     if self.lr_adjust is not None:
-        #         lr_adjust = self.lr_adjust
-        #     else:
-        #         lr_adjust = {
-        #             5: 1e-4, 10: 5e-5, 20: 1e-5, 25: 5e-6,
-        #             30: 1e-6, 35: 5e-7, 40: 1e-8
-        #         }
-        # else:
-        #     raise ValueError("请从{{0}or{1}}中选择学习率调整策略参数types".format("type1", "type2"))
-
-        # if epoch in lr_adjust.keys():
-        #     lr = lr_adjust[epoch]
-        #     for param_group in self.optimizer.param_groups:
-        #         param_group['lr'] = lr
-        #     print('Updating learning rate to {}'.format(lr))
         raise NotImplementedError('Please implement updating schedule if you want to adjust lr.')
 
     @staticmethod
@@ -124,23 +110,24 @@ class TrainerBase(nn.Module):
             state_dict['scheduler'] = scheduler.state_dict()
 
         save_path = os.path.join(file_path, f'checkpoint_epoch_{epoch}')
-        torch.save(state_dict,save_path)
+        torch.save(state_dict, save_path)
         print("Successfully saved the model to:" + str(save_path))
 
-    def forward(self, model, *args, **kwargs):
+    def train(self, *args, **kwargs):
         raise NotImplementedError('Please implement training process!')
 
 
 class SimpleDiffusionTrainer(TrainerBase):
     def __init__(self,
+                 model=None,
                  epochs=None,
-                 train_loader=None,
+                 data_loader=None,
                  optimizer=None,
                  device=None,
                  IFEarlyStopping=False,
                  adjust_learning_rate=False,
                  **kwargs):
-        super(SimpleDiffusionTrainer, self).__init__(epochs, train_loader, optimizer, device,
+        super(SimpleDiffusionTrainer, self).__init__(model, epochs, data_loader, optimizer, device,
                                                      IFEarlyStopping, adjust_learning_rate,
                                                      **kwargs)
 
@@ -149,19 +136,19 @@ class SimpleDiffusionTrainer(TrainerBase):
         else:
             raise ValueError("扩散模型训练必须提供扩散步数参数")
 
-    def forward(self, model, *args, **kwargs):
+    def train(self, *args, **kwargs):
 
         for i in range(self.epochs):
             losses = []
-            with tqdm(total=len(self.train_loader), desc=f'Epoch [{i}/{self.epochs}]') as pbar:
-                for step, (features, labels) in enumerate(self.train_loader):
+            with tqdm(total=len(self.data_loader), desc=f'Epoch [{i}/{self.epochs}]') as pbar:
+                for step, (features, labels) in enumerate(self.data_loader):
                     features = features.to(self.device)
                     batch_size = features.shape[0]
 
                     # Algorithm 1 line 3: sample t uniformally for every example in the batch
                     t = torch.randint(0, self.timesteps, (batch_size,), device=self.device).long()
 
-                    loss = model(mode="train", x_start=features, t=t, loss_type="huber")
+                    loss = self.model(mode="train", x_start=features, t=t, loss_type="huber")
                     losses.append(loss.item())
 
                     self.optimizer.zero_grad()
@@ -173,9 +160,9 @@ class SimpleDiffusionTrainer(TrainerBase):
                     pbar.update()
 
         if "model_save_path" in kwargs.keys():
-            self.save_best_model(model=model, path=kwargs["model_save_path"])
+            self.save_best_model(model=self.model, path=kwargs["model_save_path"])
 
-        return model
+        return self.model
 
 
 
