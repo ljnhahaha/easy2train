@@ -37,14 +37,10 @@ class EarlyStopping:
         self.val_loss_min = val_loss
 
 
-class dotdict(dict):
-    """dot.notation access to dictionary attributes"""
-    __getattr__ = dict.get
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
-
-
 class TrainerBase(object):
+    r"""
+    Basic class of trainer, you must override the method "train" of your subclass to train your own network.
+    """
     def __init__(self,
                  model,
                  epochs: int,
