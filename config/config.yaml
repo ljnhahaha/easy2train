@@ -1,0 +1,5 @@
+TRAIN:
+  LR: 0.00002
+  OPTIMIZER: 'Adam'
+DATASET:
+  DATAROOT: './'
